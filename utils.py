@@ -29,6 +29,7 @@ from torch.utils.tensorboard import SummaryWriter
 class TagNet(Net):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def forward(
         self,
@@ -37,7 +38,10 @@ class TagNet(Net):
         info: Dict[str, Any] = {},
     ) -> Tuple[torch.Tensor, Any]:
         # Because Tianshou gives this bad solution to a problem...
-        obs = obs.obs
+        # obs = obs.to_torch(device=self.device)
+        obs = torch.from_numpy(obs.obs).to(self.device)
+        print(self.device)
+        print(obs.device)
         return Net.forward(self, obs, state, info)
 
 
@@ -143,15 +147,14 @@ def get_agents(
             net = TagNet(
                 args.state_shape,
                 hidden_sizes=args.hidden_sizes,
-                device=args.device,
             ).to(args.device)
 
             actor = Actor(net, args.action_shape, hidden_sizes=args.hidden_sizes).to(
                 args.device
             )
 
-            critic = Critic(
-                deepcopy(net), hidden_sizes=args.hidden_sizes, device=args.device
+            critic = Critic(deepcopy(net), hidden_sizes=args.hidden_sizes).to(
+                args.device
             )
 
             actor_critic = ActorCritic(actor, critic)
