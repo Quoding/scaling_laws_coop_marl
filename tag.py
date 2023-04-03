@@ -72,31 +72,25 @@ def train_agent(
                 model_save_path + f"/{name_list[i]}.pth",
             )
 
-    def save_checkpoint_fn(epoch, env_step, gradient_step):
-        # see also: https://pytorch.org/tutorials/beginner/saving_loading_models.html
-        ckpt_path = os.path.join(log_path, "checkpoint.pth")
-        # Example: saving by epoch num
-        # ckpt_path = os.path.join(log_path, f"checkpoint_{epoch}.pth")
-        torch.save(
-            {
-                "model": policy.state_dict(),
-                "optim": optim.state_dict(),
-            },
-            ckpt_path,
-        )
-        return ckpt_path
-
-    # def stop_fn(mean_rewards):
-    #     return mean_rewards >= args.win_rate
-
-    # def train_fn(epoch, env_step):
-    #     [agent.set_eps(args.eps_train) for agent in policy.policies.values()]
-
-    # def test_fn(epoch, env_step):
-    #     [agent.set_eps(args.eps_test) for agent in policy.policies.values()]
-
     def reward_metric(rews):
         return sum(rews[:, :3])  # Maximize hits on prey
+
+    def save_checkpoint_fn(epoch, env_step, gradient_step):
+        # see also: https://pytorch.org/tutorials/beginner/saving_loading_models.html
+        # ckpt_path = os.path.join(log_path, "checkpoint_.pth")
+        # Example: saving by epoch num
+        # if hasattr(args, "model_save_path"):
+        #     model_save_path = args.model_save_path
+        # else:
+        model_save_path = os.path.join(args.logdir, "tag_cp", "ppo", f"epoch_{epoch}")
+        os.makedirs(model_save_path, exist_ok=True)
+        name_list = ["pred_1", "pred_2", "pred_3", "prey_1"]
+        for i in range(4):
+            torch.save(
+                policy.policies[agents[i]].state_dict(),
+                model_save_path + f"/{name_list[i]}.pth",
+            )
+        return model_save_path
 
     # trainer
     result = onpolicy_trainer(
@@ -110,6 +104,7 @@ def train_agent(
         batch_size=args.batch_size,
         step_per_collect=args.step_per_collect,  # Number of steps between updates of networks
         save_best_fn=save_best_fn,
+        save_checkpoint_fn=save_checkpoint_fn,
         update_per_step=args.update_per_step,
         logger=logger,
         test_in_train=False,
