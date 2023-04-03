@@ -102,7 +102,7 @@ def train_agent(
         repeat_per_collect=args.repeat_per_collect,  # Number training rounds on the same collected data
         episode_per_test=args.test_num,
         batch_size=args.batch_size,
-        step_per_collect=args.step_per_collect,  # Number of steps between updates of networks
+        episode_per_collect=args.episode_per_collect,  # Number of steps between updates of networks
         save_best_fn=save_best_fn,
         save_checkpoint_fn=save_checkpoint_fn,
         update_per_step=args.update_per_step,
