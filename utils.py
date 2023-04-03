@@ -89,7 +89,6 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--gamma", type=float, default=0.95)
     parser.add_argument("--episode-per-collect", type=int, default=16)
-    parser.add_argument("--repeat-per-collect", type=int, default=2)
 
     # DQN
     parser.add_argument("--n-step", type=int, default=3)
