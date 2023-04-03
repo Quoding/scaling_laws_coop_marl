@@ -73,7 +73,7 @@ def train_agent(
             )
 
     def reward_metric(rews):
-        return sum(rews[:, :3])  # Maximize hits on prey
+        return sum(rews[:, :3]) / 3  # Maximize hits on prey
 
     def save_checkpoint_fn(epoch, env_step, gradient_step):
         # see also: https://pytorch.org/tutorials/beginner/saving_loading_models.html
