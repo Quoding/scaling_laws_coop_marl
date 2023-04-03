@@ -203,4 +203,6 @@ def get_agents(
 
 
 def get_env(env, render_mode=None):
-    return PettingZooEnv(pad_observations_v0(env.env(render_mode=render_mode)))
+    return PettingZooEnv(
+        pad_observations_v0(env.env(max_cycles=100, render_mode=render_mode))
+    )
