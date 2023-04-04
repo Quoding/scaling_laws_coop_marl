@@ -199,7 +199,8 @@ def get_agents(
             agents[i] = RandomPolicy()
 
     policy = MultiAgentPolicyManager(agents, env)
-    return policy, optims, env.agents
+    n_params_net = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    return policy, optims, env.agents, n_params_net
 
 
 def get_env(env, render_mode=None):

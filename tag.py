@@ -37,7 +37,7 @@ def train_agent(
     test_envs.seed(args.seed)
 
     # ======== agent setup =========
-    policy, optim, agents = get_agents(env, args, agents, optims=optims)
+    policy, optim, agents, n_params = get_agents(env, args, agents, optims=optims)
 
     # print(policy, optim, agents)
 
@@ -53,7 +53,7 @@ def train_agent(
     # train_collector.collect(n_step=args.batch_size * args.training_num)
 
     # ======== tensorboard logging setup =========
-    log_path = os.path.join(args.logdir, "tag", "ppo")
+    log_path = os.path.join(args.logdir, "tag", "ppo", str(n_params), str(args.seed))
     writer = SummaryWriter(log_path)
     writer.add_text("args", str(args))
     logger = TensorboardLogger(writer)
@@ -63,7 +63,15 @@ def train_agent(
         if hasattr(args, "model_save_path"):
             model_save_path = args.model_save_path
         else:
-            model_save_path = os.path.join(args.logdir, "tag", "ppo")
+            model_save_path = os.path.join(
+                args.logdir,
+                "tag",
+                "ppo",
+                "best",
+                "n=" + str(n_params),
+                "seed=" + str(args.seed),
+            )
+        os.makedirs(model_save_path, exist_ok=True)
 
         name_list = ["pred_1", "pred_2", "pred_3", "prey_1"]
         for i in range(4):
@@ -73,7 +81,7 @@ def train_agent(
             )
 
     def reward_metric(rews):
-        return sum(rews[:, :3]) / 3  # Maximize hits on prey
+        return sum(rews[:, :3])  # Maximize hits on prey
 
     def save_checkpoint_fn(epoch, env_step, gradient_step):
         # see also: https://pytorch.org/tutorials/beginner/saving_loading_models.html
@@ -82,7 +90,15 @@ def train_agent(
         # if hasattr(args, "model_save_path"):
         #     model_save_path = args.model_save_path
         # else:
-        model_save_path = os.path.join(args.logdir, "tag_cp", "ppo", f"epoch_{epoch}")
+        model_save_path = os.path.join(
+            args.logdir,
+            "tag",
+            "ppo",
+            "cp",
+            "n=" + str(n_params),
+            "seed=" + str(args.seed),
+            f"epoch={epoch}",
+        )
         os.makedirs(model_save_path, exist_ok=True)
         name_list = ["pred_1", "pred_2", "pred_3", "prey_1"]
         for i in range(4):
@@ -129,13 +145,13 @@ def watch(
     collector = Collector(policy, env, exploration_noise=True)
     result = collector.collect(n_episode=1, render=args.render)
     rews, lens = result["rews"], result["lens"]
-    print(f"Final reward: {rews[:, args.agent_id - 1].mean()}, length: {lens.mean()}")
+    print(f"Final reward: {rews[:, :3].mean()}, length: {lens.mean()}")
 
 
 if __name__ == "__main__":
     # train the agent and watch its performance in a match!
     args = get_args()
 
-    if not args.watch:
-        result, agent = train_agent(args)
-    watch(args)
+    result, agent = train_agent(args)
+    if args.watch:
+        watch(args)
