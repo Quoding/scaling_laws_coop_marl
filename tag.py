@@ -17,7 +17,8 @@ from tianshou.utils.net.common import Net
 from torch.utils.tensorboard import SummaryWriter
 
 from utils import *
-
+N_AGENTS = 4
+NAMES = ["pred_1", "pred_2", "pred_3", "prey_1"]
 
 def train_agent(
     args: argparse.Namespace = get_args(),
@@ -53,7 +54,7 @@ def train_agent(
     # train_collector.collect(n_step=args.batch_size * args.training_num)
 
     # ======== tensorboard logging setup =========
-    log_path = os.path.join(args.logdir, "tag", "ppo", str(n_params), str(args.seed))
+    log_path = os.path.join(args.logdir, "tag", "ppo", str("_".join(str(x) for x in args.hidden_sizes)), str(args.seed))
     writer = SummaryWriter(log_path)
     writer.add_text("args", str(args))
     logger = TensorboardLogger(writer)
@@ -73,11 +74,10 @@ def train_agent(
             )
         os.makedirs(model_save_path, exist_ok=True)
 
-        name_list = ["pred_1", "pred_2", "pred_3", "prey_1"]
-        for i in range(4):
+        for i in range(N_AGENTS):
             torch.save(
                 policy.policies[agents[i]].state_dict(),
-                model_save_path + f"/{name_list[i]}.pth",
+                model_save_path + f"/{NAMES[i]}.pth",
             )
 
     def reward_metric(rews):
@@ -90,6 +90,9 @@ def train_agent(
         # if hasattr(args, "model_save_path"):
         #     model_save_path = args.model_save_path
         # else:
+        if epoch % 100 != 0:
+            return
+        
         model_save_path = os.path.join(
             args.logdir,
             "tag",
@@ -100,11 +103,10 @@ def train_agent(
             f"epoch={epoch}",
         )
         os.makedirs(model_save_path, exist_ok=True)
-        name_list = ["pred_1", "pred_2", "pred_3", "prey_1"]
-        for i in range(4):
+        for i in range(N_AGENTS):
             torch.save(
                 policy.policies[agents[i]].state_dict(),
-                model_save_path + f"/{name_list[i]}.pth",
+                model_save_path + f"/{NAMES[i]}.pth",
             )
         return model_save_path
 
