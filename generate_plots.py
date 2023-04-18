@@ -116,9 +116,9 @@ def get_ccms(archs: list, seeds: list, save_loc=None):
             args = eval(
                 event_acc.Tensors("args/text_summary")[0].tensor_proto.string_val[0]
             )
-
             # To load on device without GPU
             args.device = "cpu"
+
             for random_agent in possible_random_agents:
                 assert (
                     random_agent < 4
