@@ -79,8 +79,8 @@ def train_agent(
                 "tag",
                 "ppo",
                 "best",
-                "n=" + str(n_params),
-                "seed=" + str(args.seed),
+                str("_".join(str(x) for x in args.hidden_sizes)),
+                str(args.seed),
             )
         os.makedirs(model_save_path, exist_ok=True)
 
@@ -108,8 +108,8 @@ def train_agent(
             "tag",
             "ppo",
             "cp",
-            "n=" + str(n_params),
-            "seed=" + str(args.seed),
+            str("_".join(str(x) for x in args.hidden_sizes)),
+            str(args.seed),
             f"epoch={epoch}",
         )
         os.makedirs(model_save_path, exist_ok=True)
