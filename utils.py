@@ -191,8 +191,11 @@ def get_agents(
             optims.append(optim)
 
     if args.resume_path:
-        for i in range(env.num_agents):
-            agents[i].load_state_dict(torch.load(args.resume_path + f"{i}".pth))
+        # Only works because save names are indeed ordered properly
+        for i, name in enumerate(env.agents):
+            agents[i].load_state_dict(
+                torch.load(args.resume_path + f"/{name}.pth", map_location=args.device)
+            )
 
     if override_agent is not None:
         for i in override_agent:
