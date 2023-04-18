@@ -26,7 +26,7 @@ def train_agent(
 ) -> Tuple[dict, BasePolicy]:
     env_name = simple_tag_v2
     env_instance = get_env(env_name)
-    name_list = env.agents
+    name_list = env_instance.agents
     n_agents = len(name_list)
 
     # ======== environment setup =========
