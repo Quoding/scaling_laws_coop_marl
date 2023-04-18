@@ -44,8 +44,6 @@ def train_agent(
     # ======== agent setup =========
     policy, optim, agents, n_params = get_agents(env, args, agents, optims=optims)
 
-    # print(policy, optim, agents)
-
     # ======== collector setup =========
     train_collector = Collector(
         policy,
@@ -54,8 +52,6 @@ def train_agent(
         exploration_noise=False,
     )
     test_collector = Collector(policy, test_envs)
-    # policy.set_eps(1)
-    # train_collector.collect(n_step=args.batch_size * args.training_num)
 
     # ======== tensorboard logging setup =========
     log_path = os.path.join(
@@ -94,12 +90,6 @@ def train_agent(
         return sum(rews[:, :3])  # Maximize hits on prey
 
     def save_checkpoint_fn(epoch, env_step, gradient_step):
-        # see also: https://pytorch.org/tutorials/beginner/saving_loading_models.html
-        # ckpt_path = os.path.join(log_path, "checkpoint_.pth")
-        # Example: saving by epoch num
-        # if hasattr(args, "model_save_path"):
-        #     model_save_path = args.model_save_path
-        # else:
         if epoch % 100 != 0:
             return
 
@@ -138,8 +128,6 @@ def train_agent(
         test_in_train=False,
         reward_metric=reward_metric,
     )
-
-    # policies = [policy.policies[agents[i]] for i in range(len(agents))]
 
     return result, policy
 
