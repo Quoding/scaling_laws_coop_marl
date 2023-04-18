@@ -6,6 +6,6 @@ hidden="64 64 64"
 
 for i in 1 2 3 4 5 
 do
-  python tag.py --seed ${i}  --episode-per-collect $episode_collect --repeat-per-collect $repeat_collect --step-per-epoch $step_epoch --epoch $epoch --hidden-sizes $hidden
+  nohup python tag.py --seed ${i}  --episode-per-collect $episode_collect --repeat-per-collect $repeat_collect --step-per-epoch $step_epoch --epoch $epoch --hidden-sizes $hidden &
 done
 
