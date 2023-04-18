@@ -18,23 +18,24 @@ from torch.utils.tensorboard import SummaryWriter
 
 from utils import *
 
-N_AGENTS = 4
-NAMES = ["pred_1", "pred_2", "pred_3", "prey_1"]
-
 
 def train_agent(
     args: argparse.Namespace = get_args(),
     agents: Optional[Tuple[BasePolicy]] = None,
     optims: Optional[torch.optim.Optimizer] = None,
 ) -> Tuple[dict, BasePolicy]:
-    env = simple_tag_v2
-    name_list = ["adversary_0", "adversary_1", "adversary_2", "agent_0"]
+    env_name = simple_tag_v2
+    env_instance = get_env(env_name)
+    name_list = env.agents
+    n_agents = len(name_list)
 
     # ======== environment setup =========
     train_envs = DummyVectorEnv(
-        [lambda: get_env(env) for _ in range(args.training_num)]
+        [lambda: get_env(env_name) for _ in range(args.training_num)]
     )
-    test_envs = DummyVectorEnv([lambda: get_env(env) for _ in range(args.test_num)])
+    test_envs = DummyVectorEnv(
+        [lambda: get_env(env_name) for _ in range(args.test_num)]
+    )
     # seed
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -42,7 +43,7 @@ def train_agent(
     test_envs.seed(args.seed)
 
     # ======== agent setup =========
-    policy, optim, agents, n_params = get_agents(env, args, agents, optims=optims)
+    policy, optim, agents, n_params = get_agents(env_name, args, agents, optims=optims)
 
     # ======== collector setup =========
     train_collector = Collector(
@@ -80,10 +81,10 @@ def train_agent(
             )
         os.makedirs(model_save_path, exist_ok=True)
 
-        for i in range(N_AGENTS):
+        for i in range(n_agents):
             torch.save(
                 policy.policies[agents[i]].state_dict(),
-                model_save_path + f"/{NAMES[i]}.pth",
+                model_save_path + f"/{name_list[i]}.pth",
             )
 
     def reward_metric(rews):
@@ -103,10 +104,10 @@ def train_agent(
             f"epoch={epoch}",
         )
         os.makedirs(model_save_path, exist_ok=True)
-        for i in range(N_AGENTS):
+        for i in range(n_agents):
             torch.save(
                 policy.policies[agents[i]].state_dict(),
-                model_save_path + f"/{NAMES[i]}.pth",
+                model_save_path + f"/{name_list[i]}.pth",
             )
         return model_save_path
 
