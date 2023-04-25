@@ -2,6 +2,7 @@
 import pickle
 from argparse import Namespace
 from copy import deepcopy
+from os.path import exists
 from pprint import pprint
 
 import matplotlib.pyplot as plt
@@ -25,14 +26,13 @@ from tianshou.policy import (
 )
 from tianshou.trainer import offpolicy_trainer
 from tianshou.utils.net.common import Net
+from tqdm import tqdm
 
 from utils import *
 from viz_config import *
-from tqdm import tqdm
-from os.path import exists
 
 TAU = 1  # Sensible default
-E = 3  # To vary
+E = 5  # To vary
 ENV = simple_tag_v2
 ENV_INSTANCE = get_env(simple_tag_v2)
 NAMES = ENV_INSTANCE.agents
@@ -148,7 +148,7 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
                     args.resume_path = current_checkpoint_path
 
                     # Load agent, set one as random
-                    policy, optim, agents, n_params = get_agents(
+                    policy, optim, agents, n_params, flops_per_loop = get_agents(
                         ENV, args, override_agent=[random_agent]
                     )
 
@@ -180,6 +180,7 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
                             ccms[arch][save_name] = {}
                             for s in seeds:
                                 ccms[arch]["n_params"] = n_params
+                                ccms[arch]["n_flops"] = flops_per_loop
                                 ccms[arch][save_name][s] = {}
                                 ccms[arch][save_name][s]["correl"] = []
                                 ccms[arch][save_name][s]["p-value"] = []
@@ -304,7 +305,7 @@ def plot_ccm_parameters(save_loc, archs, seeds):
         regression_params.append(n_params)
         # print(ccms[arch].keys())
         for save_name in ccms[arch].keys():
-            if save_name == "n_params":
+            if save_name == "n_params" or save_name == "n_flops":
                 continue
             for seed in seeds:
                 correls.append(ccms[arch][save_name][seed]["correl"])
@@ -348,6 +349,73 @@ def plot_ccm_parameters(save_loc, archs, seeds):
 
     fig.tight_layout()
     fig.savefig(f"{save_loc}_ccms_parameters.png")
+
+
+def plot_ccm_flops(save_loc, archs, seeds):
+    """Plot best ccm (so, 1 checkpoint only) across all seeds for all archs
+
+    Args:
+        save_loc (str): save location
+        archs (list): architectures to plot
+        seeds (list): seeds to plot
+    """
+    fig, ax = plt.subplots(1, 1)
+    # x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
+    regression_params = []
+    regression_correls = []
+    for i, arch in enumerate(archs):
+        with open(save_loc + f"{arch=}.pkl", "rb") as f:
+            ccms = pickle.load(f)
+
+        correls = []
+        n_flops = ccms[arch]["n_flops"]
+        regression_params.append(n_flops)
+        # print(ccms[arch].keys())
+        for save_name in ccms[arch].keys():
+            if save_name == "n_params" or save_name == "n_flops":
+                continue
+            for seed in seeds:
+                correls.append(ccms[arch][save_name][seed]["correl"])
+        # Compute values to show
+        correls = np.array(correls)
+        correl_mean = np.nanmean(correls, axis=0)
+        checkpoint_index = np.argmax(correl_mean)  # Get checkpoint with best ccm
+        regression_correls.append(correl_mean[checkpoint_index])
+        correl_mean_perseed = [
+            correls[i :: len(seeds), checkpoint_index].mean() for i in range(len(seeds))
+        ]
+
+        ax.scatter(
+            [n_flops],
+            [correl_mean[checkpoint_index]],
+            color="black",
+            zorder=2,
+            label="Mean",
+        )
+        ax.scatter(
+            [n_flops] * len(seeds),
+            correl_mean_perseed,
+            color=COLORS[i],
+            zorder=1,
+        )
+
+    # z = np.polyfit(np.log(regression_params), regression_correls, 1)
+    # a, b = np.poly1d(z)
+    # xseq = np.linspace(min(regression_params), max(regression_params), num=100)
+    # f = lambda x: a * np.log(x) + b
+    # ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} x log(x) + {b:.2}")
+
+    # ax.set_xscale("log")
+    ax.set_xlabel("Number of FLOPs per RL loop")
+    ax.set_ylabel("Convergent X-mapping")
+    ax.tick_params(axis="x", labelrotation=45)
+
+    handles, labels = fig.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+
+    fig.tight_layout()
+    fig.savefig(f"{save_loc}_ccms_flops.png")
 
 
 def get_dir_size(path):
@@ -395,28 +463,78 @@ def get_archs_seeds(_dir, seeds=None):
     return archs, np.array(seeds)[final_set]
 
 
+def get_n_flops(archs, seeds, save_loc):
+    """Post hoc gathering of number of flops per RL loop
+
+    Args:
+        archs (list): architectures for which to retrieve number of flops
+        seeds (list): list of valid seeds, only first one will be taken anyway
+        save_loc (str): save/load location
+    """
+    for arch in tqdm(archs):
+        # if exists(save_loc + f"{arch=}.pkl"):
+        # print(f"Skipped {arch=}")
+        # continue
+        with open(save_loc + f"{arch=}.pkl", "rb") as f:
+            ccms = pickle.load(f)
+
+        seed = seeds[0]
+        # Retrieve arguments used for the targeted run
+        path = f"log/tag/ppo/{arch}/{seed}"
+        event_acc = EventAccumulator(path)
+        event_acc.Reload()
+        args = eval(
+            event_acc.Tensors("args/text_summary")[0].tensor_proto.string_val[0]
+        )
+        # To load on device without GPU
+        args.device = "cpu"
+
+        # Take first path since we need ANY model loaded, they're all the same in flops.
+        checkpoints_path = f"log/tag/ppo/cp/{arch}/{seed}/"
+        avail_checkpoint = sorted(
+            os.listdir(checkpoints_path), key=lambda x: int(x.split("=")[1])
+        )[0]
+        avail_checkpoints_path = checkpoints_path + avail_checkpoint
+
+        # Iterate through checkpoints, loading agents and setting one as random policy
+        # then, collect episodes to compute CCM
+        args.resume_path = avail_checkpoints_path
+
+        # Load agent, set one as random
+        policy, optim, agents, n_params, flops_per_loop = get_agents(ENV, args)
+
+        ccms[arch]["n_flops"] = flops_per_loop
+
+        with open(save_loc + f"{arch=}.pkl", "wb") as f:
+            pickle.dump(ccms, f)
+
+
 if __name__ == "__main__":
     seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     archs, seeds = get_archs_seeds("log/tag/ppo", seeds=seeds)
     save_loc = f"ccms_{E=}"
     save_ccms(archs, seeds, save_loc=save_loc)
-    print(seeds)
+    # get_n_flops(archs, seeds, save_loc)
     # decide whether to do depth-wise of width-wise analysis
     # Counter-intuitive:
     # If depth is selected, we decide a fixed depth and vary the width
     # If width is selected, we decided a fixed with and vary the depth
-    depth = 3
-    width = False
+    # depth = 3
+    depth = False
+    # width = False
+    width = 64
     assert width != depth
     if depth != False:
         archs = [arch for arch in archs if len(arch.split("_")) == depth]
     elif width != False:
-        archs = [arch for arch in archs if set(arch.split("_"))[0] == width]
+        archs = [arch for arch in archs if list(set(arch.split("_")))[0] == str(width)]
 
+    print(archs)
     # with open("test_ccms.pkl", "rb") as f:
     #     ccms = pickle.load(f)
     # plot_ccms(save_loc, archs, seeds)
-    plot_ccm_parameters(save_loc, archs, seeds)
+    # plot_ccm_parameters(save_loc, archs, seeds)
+    plot_ccm_flops(save_loc, archs, seeds)
 
     # rewards = get_rewards(archs, seeds)
     # plot_rewards(rewards, save_loc, seeds)

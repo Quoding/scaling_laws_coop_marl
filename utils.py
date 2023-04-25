@@ -17,6 +17,7 @@ from tianshou.policy import (
     PPOPolicy,
     RandomPolicy,
 )
+from fvcore.nn import FlopCountAnalysis
 
 # from tianshou.trainer import offpolicy_trainer, onpolicy_trainer
 from tianshou.utils import TensorboardLogger
@@ -38,7 +39,9 @@ class TagNet(Net):
     ) -> Tuple[torch.Tensor, Any]:
         # Because Tianshou gives this bad solution to a problem...
         # obs = obs.to_torch(device=self.device)
-        obs = obs.obs
+        if hasattr(obs, "obs"):
+            obs = obs.obs
+
         return Net.forward(self, obs, state, info)
 
 
@@ -202,8 +205,14 @@ def get_agents(
             agents[i] = RandomPolicy()
 
     policy = MultiAgentPolicyManager(agents, env)
+    # Create a dummy input to measure number of flops per loop
+    dummy_input = torch.from_numpy(env.reset()[0]["obs"])[None]
+    flops_per_loop = (
+        FlopCountAnalysis(actor, dummy_input).total()
+        + FlopCountAnalysis(critic, dummy_input).total()
+    )
     n_params_net = sum(p.numel() for p in net.parameters() if p.requires_grad)
-    return policy, optims, env.agents, n_params_net
+    return policy, optims, env.agents, n_params_net, flops_per_loop
 
 
 def get_env(env, render_mode=None):

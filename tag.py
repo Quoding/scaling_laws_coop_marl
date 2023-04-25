@@ -43,7 +43,9 @@ def train_agent(
     test_envs.seed(args.seed)
 
     # ======== agent setup =========
-    policy, optim, agents, n_params = get_agents(env_name, args, agents, optims=optims)
+    policy, optim, agents, n_params, _ = get_agents(
+        env_name, args, agents, optims=optims
+    )
 
     # ======== collector setup =========
     train_collector = Collector(
@@ -141,7 +143,7 @@ def watch(
     env_name = simple_tag_v2
     env = get_env(env=simple_tag_v2, render_mode="human")
     env = DummyVectorEnv([lambda: env])
-    policy, optim, agents = get_agents(env_name, args, agents=agents)
+    policy, optim, agents, _, _ = get_agents(env_name, args, agents=agents)
     policy.eval()
     collector = Collector(policy, env, exploration_noise=True)
     result = collector.collect(n_episode=1, render=args.render)
