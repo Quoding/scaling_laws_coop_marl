@@ -35,7 +35,7 @@ from os.path import exists
 # scipy.special.seterr(all="raise")
 
 TAU = 1  # Sensible default
-E = 5  # To vary
+E = 2  # To vary
 ENV = simple_tag_v2
 ENV_INSTANCE = get_env(simple_tag_v2)
 NAMES = ENV_INSTANCE.agents
@@ -228,7 +228,7 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
 #     return res
 
 
-def plot_ccms(save_loc, archs):
+def plot_ccms(save_loc, archs, seeds):
     fig, ax = plt.subplots(1, 1)
     x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
     for i, arch in enumerate(archs):
@@ -239,7 +239,7 @@ def plot_ccms(save_loc, archs):
         for save_name in ccms[arch].keys():
             if save_name == "n_params":
                 continue
-            for seed in ccms[arch][save_name].keys():
+            for seed in seeds:
                 correls.append(ccms[arch][save_name][seed]["correl"])
 
         arch_label = arch.replace("_", "x")
@@ -268,14 +268,14 @@ def plot_ccms(save_loc, archs):
     fig.savefig(f"{save_loc}_ccms.png")
 
 
-def plot_rewards(rewards_dict, save_loc):
+def plot_rewards(rewards_dict, save_loc, seeds):
     fig, ax = plt.subplots(1, 1)
     x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES + 1)]
 
     for i, arch in enumerate(rewards_dict.keys()):
         rewards_list = []
 
-        for seed in rewards_dict[arch].keys():
+        for seed in seeds:
             rewards_list.append(rewards_dict[arch][seed])
 
         arch_label = arch.replace("_", "x")
@@ -302,6 +302,56 @@ def plot_rewards(rewards_dict, save_loc):
     fig.tight_layout()
     fig.legend()
     fig.savefig(f"{save_loc}_rewards.png")
+
+
+def plot_ccm_parameters(save_loc, archs, seeds):
+    fig, ax = plt.subplots(1, 1)
+    # x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
+    for i, arch in enumerate(archs):
+        with open(save_loc + f"{arch=}.pkl", "rb") as f:
+            ccms = pickle.load(f)
+
+        correls = []
+        n_params = ccms[arch]["n_params"]
+        # print(ccms[arch].keys())
+        for save_name in ccms[arch].keys():
+            if save_name == "n_params":
+                continue
+            for seed in seeds:
+                correls.append(ccms[arch][save_name][seed]["correl"])
+        # Compute values to show
+        correls = np.array(correls)
+        correl_mean = np.nanmean(correls, axis=0)
+        checkpoint_index = np.argmax(correl_mean)  # Get checkpoint with best ccm
+
+        correl_mean_perseed = [
+            correls[i :: len(seeds), checkpoint_index].mean() for i in range(len(seeds))
+        ]
+
+        ax.scatter(
+            [n_params],
+            [correl_mean[checkpoint_index]],
+            color="black",
+            zorder=2,
+            label="Mean",
+        )
+        ax.scatter(
+            [n_params] * len(seeds),
+            correl_mean_perseed,
+            color=COLORS[i],
+            zorder=1,
+        )
+        ax.set_xscale("log")
+        ax.set_xlabel("Number of parameters")
+        ax.set_ylabel("Convergent X-mapping")
+        ax.tick_params(axis="x", labelrotation=45)
+
+    handles, labels = fig.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+
+    fig.tight_layout()
+    fig.savefig(f"{save_loc}_ccms_parameters.png")
 
 
 def get_dir_size(path):
@@ -353,13 +403,25 @@ if __name__ == "__main__":
     seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     archs, seeds = get_archs_seeds("log/tag/ppo", seeds=seeds)
     save_loc = f"ccms_{E=}"
-    # Variables
     save_ccms(archs, seeds, save_loc=save_loc)
+    print(seeds)
+    # decide whether to do depth-wise of width-wise analysis
+    # Counter-intuitive:
+    # If depth is selected, we decide a fixed depth and vary the width
+    # If width is selected, we decided a fixed with and vary the depth
+    depth = 3
+    width = False
+    assert width != depth
+    if depth != False:
+        archs = [arch for arch in archs if len(arch.split("_")) == depth]
+    elif width != False:
+        archs = [arch for arch in archs if set(arch.split("_"))[0] == width]
 
     # with open("test_ccms.pkl", "rb") as f:
     #     ccms = pickle.load(f)
-    plot_ccms(save_loc, archs)
+    # plot_ccms(save_loc, archs, seeds)
+    plot_ccm_parameters(save_loc, archs, seeds)
 
-    rewards = get_rewards(archs, seeds)
-    plot_rewards(rewards)
+    # rewards = get_rewards(archs, seeds)
+    # plot_rewards(rewards, save_loc, seeds)
     # retrieve_key_data_from_dict(ccms, "correl")
