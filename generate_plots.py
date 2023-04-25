@@ -32,7 +32,7 @@ from tqdm import tqdm
 from os.path import exists
 
 TAU = 1  # Sensible default
-E = 2  # To vary
+E = 3  # To vary
 ENV = simple_tag_v2
 ENV_INSTANCE = get_env(simple_tag_v2)
 NAMES = ENV_INSTANCE.agents
@@ -184,7 +184,8 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
                                 ccms[arch][save_name][s]["correl"] = []
                                 ccms[arch][save_name][s]["p-value"] = []
 
-                        # Compute and store ccm
+                        # np.seterr(all="raise")
+                        # scipy.special.seterr(all="raise")           # Compute and store ccm
                         ccm1 = ccm(
                             actions[f"adversary_{random_agent}"],
                             actions[adv_name],
@@ -202,27 +203,6 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
                 pickle.dump(ccms, f)
 
     return
-
-
-# def retrieve_key_data_from_dict(dic: dict, target_key: str):
-#     """Recursively walk throught dict and return target_key's values across the dict
-#     Args:
-#         dic (dict): dict to walk
-#         target_key (str): name of the key where value of interest is stored
-
-#     Returns:
-#         list: list of values of interest
-#     """
-#     res = []
-#     current_keys = dic.keys()
-#     if target_key in current_keys:
-#         return dic[target_key]
-
-#     for key in current_keys:
-#         res.append(retrieve_key_data_from_dict(dic[key], target_key))
-
-#     pprint(res)
-#     return res
 
 
 def plot_ccms(save_loc, archs, seeds):
@@ -256,9 +236,10 @@ def plot_ccms(save_loc, archs, seeds):
             color=COLORS[i],
         )
         ax.plot(x_axis, correl_mean, label=arch_label, color=COLORS[i])
-        ax.set_xlabel("Number of environment interactions")
-        ax.set_ylabel("Convergent X-mapping")
-        ax.tick_params(axis="x", labelrotation=45)
+
+    ax.set_xlabel("Number of environment interactions")
+    ax.set_ylabel("Convergent X-mapping")
+    ax.tick_params(axis="x", labelrotation=45)
 
     fig.tight_layout()
     fig.legend()
@@ -292,9 +273,10 @@ def plot_rewards(rewards_dict, save_loc, seeds):
             color=COLORS[i],
         )
         ax.plot(x_axis, reward_mean, label=arch_label, color=COLORS[i])
-        ax.set_xlabel("Number of environment interactions")
-        ax.set_ylabel("Obtained reward")
-        ax.tick_params(axis="x", labelrotation=45)
+
+    ax.set_xlabel("Number of environment interactions")
+    ax.set_ylabel("Obtained reward")
+    ax.tick_params(axis="x", labelrotation=45)
 
     fig.tight_layout()
     fig.legend()
@@ -302,14 +284,24 @@ def plot_rewards(rewards_dict, save_loc, seeds):
 
 
 def plot_ccm_parameters(save_loc, archs, seeds):
+    """Plot best ccm (so, 1 checkpoint only) across all seeds for all archs
+
+    Args:
+        save_loc (str): save location
+        archs (list): architectures to plot
+        seeds (list): seeds to plot
+    """
     fig, ax = plt.subplots(1, 1)
     # x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
+    regression_params = []
+    regression_correls = []
     for i, arch in enumerate(archs):
         with open(save_loc + f"{arch=}.pkl", "rb") as f:
             ccms = pickle.load(f)
 
         correls = []
         n_params = ccms[arch]["n_params"]
+        regression_params.append(n_params)
         # print(ccms[arch].keys())
         for save_name in ccms[arch].keys():
             if save_name == "n_params":
@@ -320,7 +312,7 @@ def plot_ccm_parameters(save_loc, archs, seeds):
         correls = np.array(correls)
         correl_mean = np.nanmean(correls, axis=0)
         checkpoint_index = np.argmax(correl_mean)  # Get checkpoint with best ccm
-
+        regression_correls.append(correl_mean[checkpoint_index])
         correl_mean_perseed = [
             correls[i :: len(seeds), checkpoint_index].mean() for i in range(len(seeds))
         ]
@@ -338,10 +330,17 @@ def plot_ccm_parameters(save_loc, archs, seeds):
             color=COLORS[i],
             zorder=1,
         )
-        ax.set_xscale("log")
-        ax.set_xlabel("Number of parameters")
-        ax.set_ylabel("Convergent X-mapping")
-        ax.tick_params(axis="x", labelrotation=45)
+
+    z = np.polyfit(np.log(regression_params), regression_correls, 1)
+    a, b = np.poly1d(z)
+    xseq = np.linspace(min(regression_params), max(regression_params), num=100)
+    f = lambda x: a * np.log(x) + b
+    ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} x log(x) + {b:.2}")
+
+    ax.set_xscale("log")
+    ax.set_xlabel("Number of parameters")
+    ax.set_ylabel("Convergent X-mapping")
+    ax.tick_params(axis="x", labelrotation=45)
 
     handles, labels = fig.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
