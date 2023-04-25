@@ -6,6 +6,7 @@ from pprint import pprint
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import tianshou
 import torch
 from causal_ccm.causal_ccm import ccm
@@ -27,9 +28,14 @@ from tianshou.utils.net.common import Net
 
 from utils import *
 from viz_config import *
+from tqdm import tqdm
+from os.path import exists
+
+# np.seterr(all="raise")
+# scipy.special.seterr(all="raise")
 
 TAU = 1  # Sensible default
-E = 2  # To vary
+E = 5  # To vary
 ENV = simple_tag_v2
 ENV_INSTANCE = get_env(simple_tag_v2)
 NAMES = ENV_INSTANCE.agents
@@ -64,7 +70,7 @@ def get_rewards(archs: list, seeds: list, save_loc=None):
     """
     rewards = {}
 
-    for arch in archs:
+    for arch in tqdm(archs):
         rewards[arch] = {}
         for seed in seeds:
             # Get TFEvents store with Tensorboard
@@ -102,12 +108,13 @@ def get_ccms(archs: list, seeds: list, save_loc=None):
     Returns:
         dict: Dictionary containing CCMs for the given architectures and seeds
     """
-    ccms = {}
     possible_random_agents = [0, 1, 2]
-
-    for arch in archs:
+    for arch in tqdm(archs):
+        if exists(save_loc + f"{arch=}.pkl"):
+            print(f"Skipped {arch=}")
+            continue
+        ccms = {}
         ccms[arch] = {}
-
         for seed in seeds:
             # Retrieve arguments used for the targeted run
             path = f"log/tag/ppo/{arch}/{seed}"
@@ -144,7 +151,7 @@ def get_ccms(archs: list, seeds: list, save_loc=None):
                     args.resume_path = current_checkpoint_path
 
                     # Load agent, set one as random
-                    policy, optim, agents, _ = get_agents(
+                    policy, optim, agents, n_params = get_agents(
                         ENV, args, override_agent=[random_agent]
                     )
 
@@ -175,6 +182,7 @@ def get_ccms(archs: list, seeds: list, save_loc=None):
                         if save_name not in ccms[arch].keys():
                             ccms[arch][save_name] = {}
                             for s in seeds:
+                                ccms[arch]["n_params"] = n_params
                                 ccms[arch][save_name][s] = {}
                                 ccms[arch][save_name][s]["correl"] = []
                                 ccms[arch][save_name][s]["p-value"] = []
@@ -191,10 +199,10 @@ def get_ccms(archs: list, seeds: list, save_loc=None):
                         ccms[arch][save_name][seed]["correl"].append(correl)
                         ccms[arch][save_name][seed]["p-value"].append(p)
 
-    # Save ccms if needed
-    if save_loc is not None:
-        with open(save_loc, "wb") as f:
-            pickle.dump(ccms, f)
+        # Save ccms if needed
+        if save_loc is not None:
+            with open(save_loc + f"{arch=}.pkl", "wb") as f:
+                pickle.dump(ccms, f)
 
     return ccms
 
@@ -220,12 +228,17 @@ def get_ccms(archs: list, seeds: list, save_loc=None):
 #     return res
 
 
-def plot_ccms(ccms):
+def plot_ccms(save_loc, archs):
     fig, ax = plt.subplots(1, 1)
-    x_axis = [f"{SLIC_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
-    for i, arch in enumerate(ccms.keys()):
+    x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
+    for i, arch in enumerate(archs):
+        with open(save_loc + f"{arch=}.pkl", "rb") as f:
+            ccms = pickle.load(f)
+
         correls = []
         for save_name in ccms[arch].keys():
+            if save_name == "n_params":
+                continue
             for seed in ccms[arch][save_name].keys():
                 correls.append(ccms[arch][save_name][seed]["correl"])
 
@@ -233,13 +246,15 @@ def plot_ccms(ccms):
 
         # Compute values to show
         correl_mean = np.nanmean(correls, axis=0)
-        correl_std = np.nanstd(correls, axis=0)
+        correl_ci = np.nanstd(correls, axis=0) / np.sqrt(
+            len(ccms[arch][save_name].keys())
+        )
 
         # Plot
         ax.fill_between(
             x_axis,
-            correl_mean - correl_std,
-            correl_mean + correl_std,
+            correl_mean - correl_ci,
+            correl_mean + correl_ci,
             alpha=0.3,
             color=COLORS[i],
         )
@@ -250,7 +265,7 @@ def plot_ccms(ccms):
 
     fig.tight_layout()
     fig.legend()
-    fig.savefig("test_ccms.png")
+    fig.savefig(f"{save_loc}_ccms.png")
 
 
 def plot_rewards(rewards_dict):
@@ -267,13 +282,15 @@ def plot_rewards(rewards_dict):
 
         # Compute values to show
         reward_mean = np.nanmean(rewards_list, axis=0)
-        reward_std = np.nanstd(rewards_list, axis=0)
+        reward_ci = np.nanstd(rewards_list, axis=0) / np.sqrt(
+            len(rewards_dict[arch].keys())
+        )
 
         # Plot
         ax.fill_between(
             x_axis,
-            reward_mean - reward_std,
-            reward_mean + reward_std,
+            reward_mean - reward_ci,
+            reward_mean + reward_ci,
             alpha=0.3,
             color=COLORS[i],
         )
@@ -287,16 +304,61 @@ def plot_rewards(rewards_dict):
     fig.savefig("test_rewards.png")
 
 
+def get_dir_size(path):
+    total = 0
+    with os.scandir(path) as it:
+        for entry in it:
+            if entry.is_file():
+                total += entry.stat().st_size
+            elif entry.is_dir():
+                total += get_dir_size(entry.path)
+    return total
+
+
+def get_archs_seeds(_dir, seeds=None):
+    archs = os.listdir(_dir)
+    if "best" in archs:
+        archs.remove("best")
+    if "cp" in archs:
+        archs.remove("cp")
+    valid = []
+
+    # Filter seeds which crashed, retrieve only good runs across all archs
+    for arch in archs:
+        path = _dir + "/" + arch + "/"
+
+        if seeds is None:
+            seeds = sorted(os.listdir(path), key=lambda x: int(x))
+
+        dir_sizes = []
+        for seed in seeds:
+            path_seed = path + str(seed)
+            dir_sizes.append(int(get_dir_size(path_seed)))
+
+        dir_sizes = np.array(dir_sizes)
+        max_size = max(dir_sizes)
+        valid_seeds = set(np.where(dir_sizes == max_size)[0])
+        valid.append(valid_seeds)
+
+    final_set = valid[0]
+    for seed_set in valid[1:]:
+        final_set = seed_set & final_set
+
+    final_set = list(final_set)
+
+    return archs, np.array(seeds)[final_set]
+
+
 if __name__ == "__main__":
+    seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    archs, seeds = get_archs_seeds("log/tag/ppo", seeds=seeds)
+    save_loc = f"ccms_{E=}"
     # Variables
-    archs = ["64_64_64_64"]
-    # seeds = [1, 2, 3, 4, 5]
-    seeds = [1, 2, 3, 4, 5]
-    # ccms = get_ccms(archs, seeds, save_loc="test_ccms.pkl")
+    ccms = get_ccms(archs, seeds, save_loc=save_loc)
 
     # with open("test_ccms.pkl", "rb") as f:
     #     ccms = pickle.load(f)
-    # plot_ccms(ccms)
+    plot_ccms(save_loc, archs)
 
     rewards = get_rewards(archs, seeds)
     plot_rewards(rewards)
