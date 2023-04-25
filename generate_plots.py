@@ -31,9 +31,6 @@ from viz_config import *
 from tqdm import tqdm
 from os.path import exists
 
-# np.seterr(all="raise")
-# scipy.special.seterr(all="raise")
-
 TAU = 1  # Sensible default
 E = 2  # To vary
 ENV = simple_tag_v2
