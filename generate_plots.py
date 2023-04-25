@@ -97,7 +97,7 @@ def get_rewards(archs: list, seeds: list, save_loc=None):
     return rewards
 
 
-def get_ccms(archs: list, seeds: list, save_loc=None):
+def save_ccms(archs: list, seeds: list, save_loc=None):
     """Compute Convergent Cross-Mapping (CCM) for given architectures and seeds. Requires pretrained models.
 
     Args:
@@ -204,7 +204,7 @@ def get_ccms(archs: list, seeds: list, save_loc=None):
             with open(save_loc + f"{arch=}.pkl", "wb") as f:
                 pickle.dump(ccms, f)
 
-    return ccms
+    return
 
 
 # def retrieve_key_data_from_dict(dic: dict, target_key: str):
@@ -268,7 +268,7 @@ def plot_ccms(save_loc, archs):
     fig.savefig(f"{save_loc}_ccms.png")
 
 
-def plot_rewards(rewards_dict):
+def plot_rewards(rewards_dict, save_loc):
     fig, ax = plt.subplots(1, 1)
     x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES + 1)]
 
@@ -301,7 +301,7 @@ def plot_rewards(rewards_dict):
 
     fig.tight_layout()
     fig.legend()
-    fig.savefig("test_rewards.png")
+    fig.savefig(f"{save_loc}_rewards.png")
 
 
 def get_dir_size(path):
@@ -354,7 +354,7 @@ if __name__ == "__main__":
     archs, seeds = get_archs_seeds("log/tag/ppo", seeds=seeds)
     save_loc = f"ccms_{E=}"
     # Variables
-    ccms = get_ccms(archs, seeds, save_loc=save_loc)
+    save_ccms(archs, seeds, save_loc=save_loc)
 
     # with open("test_ccms.pkl", "rb") as f:
     #     ccms = pickle.load(f)
