@@ -27,15 +27,27 @@ from tianshou.policy import (
 from tianshou.trainer import offpolicy_trainer
 from tianshou.utils.net.common import Net
 from tqdm import tqdm
-
+from matplotlib.colors import hsv_to_rgb
 from utils import *
 from viz_config import *
 
+plt.hsv()
+
 TAU = 1  # Sensible default
-E = 5  # To vary
+E = 4  # To vary
 ENV = simple_tag_v2
 ENV_INSTANCE = get_env(simple_tag_v2)
 NAMES = ENV_INSTANCE.agents
+# MIN_PARAMS = 0
+# MAX_PARAMS = 2112512
+# START_HUE = 250 / 360
+# END_HUE = 50 / 360
+# SAT = 1
+# VAL = 0.90
+# scale_param_hue = lambda n: abs(
+#     (n - MIN_PARAMS) / (MAX_PARAMS - MIN_PARAMS) * (END_HUE - START_HUE) + START_HUE
+# )
+# param_to_rgb = lambda n: hsv_to_rgb([scale_param_hue(n), SAT, VAL])
 COLORS = [
     "tab:orange",
     "tab:purple",
@@ -209,14 +221,17 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
 def plot_ccms(save_loc, archs, seeds):
     fig, ax = plt.subplots(1, 1)
     x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
-    for i, arch in enumerate(archs):
+    sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
+    for i, arch in enumerate(sorted(archs, key=sort_fn)):
         with open(save_loc + f"{arch=}.pkl", "rb") as f:
             ccms = pickle.load(f)
 
         correls = []
+        n_params = ccms[arch]["n_params"]
         for save_name in ccms[arch].keys():
-            if save_name == "n_params":
+            if save_name == "n_params" or save_name == "n_flops":
                 continue
+            n_obs = len(ccms[arch][save_name].keys())
             for seed in seeds:
                 correls.append(ccms[arch][save_name][seed]["correl"])
 
@@ -224,9 +239,7 @@ def plot_ccms(save_loc, archs, seeds):
 
         # Compute values to show
         correl_mean = np.nanmean(correls, axis=0)
-        correl_ci = np.nanstd(correls, axis=0) / np.sqrt(
-            len(ccms[arch][save_name].keys())
-        )
+        correl_ci = np.nanstd(correls, axis=0) / np.sqrt(n_obs)
 
         # Plot
         ax.fill_between(
@@ -251,7 +264,9 @@ def plot_rewards(rewards_dict, save_loc, seeds):
     fig, ax = plt.subplots(1, 1)
     x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES + 1)]
 
-    for i, arch in enumerate(rewards_dict.keys()):
+    sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
+
+    for i, arch in enumerate(sorted(rewards_dict.keys(), key=sort_fn)):
         rewards_list = []
 
         for seed in seeds:
@@ -284,7 +299,62 @@ def plot_rewards(rewards_dict, save_loc, seeds):
     fig.savefig(f"{save_loc}_rewards.png")
 
 
-def plot_ccm_parameters(save_loc, archs, seeds):
+def plot_ccm_flops(save_loc, archs, seeds):
+    """Plot ccms w.r.t. flops
+
+    Args:
+        save_loc (str): save location
+        archs (list): architectures to plot
+        seeds (list): seeds to plot
+    """
+    fig, ax = plt.subplots(1, 1)
+    regression_params = []
+    regression_correls = []
+    sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
+
+    for i, arch in enumerate(sorted(archs, key=sort_fn)):
+        with open(save_loc + f"{arch=}.pkl", "rb") as f:
+            ccms = pickle.load(f)
+
+        correls = []
+        n_flops = ccms[arch]["n_flops"]
+        x_axis = [SLICE_SIZE * i * n_flops for i in range(1, NUM_SLICES)]
+        # print(ccms[arch].keys())
+        for save_name in ccms[arch].keys():
+            if save_name == "n_params" or save_name == "n_flops":
+                continue
+            n_obs = len(ccms[arch][save_name].keys())
+
+            for seed in seeds:
+                correls.append(ccms[arch][save_name][seed]["correl"])
+
+        arch_label = arch.replace("_", "x")
+
+        # Compute values to show
+        correls = np.array(correls)
+        correl_mean = np.nanmean(correls, axis=0)
+        correl_ci = np.nanstd(correls, axis=0) / np.sqrt(n_obs)
+
+        # Plot
+        ax.fill_between(
+            x_axis,
+            correl_mean - correl_ci,
+            correl_mean + correl_ci,
+            alpha=0.3,
+            color=COLORS[i],
+        )
+        ax.plot(x_axis, correl_mean, label=arch_label, color=COLORS[i])
+
+    ax.set_xlabel("FLOPs")
+    ax.set_ylabel("Convergent X-mapping")
+    # ax.tick_params(axis="x", labelrotation=90)
+    ax.set_xscale("log")
+    fig.tight_layout()
+    fig.legend()
+    fig.savefig(f"{save_loc}_ccms_flops.png")
+
+
+def plot_regr_ccm_parameters(save_loc, archs, seeds):
     """Plot best ccm (so, 1 checkpoint only) across all seeds for all archs
 
     Args:
@@ -296,7 +366,9 @@ def plot_ccm_parameters(save_loc, archs, seeds):
     # x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
     regression_params = []
     regression_correls = []
-    for i, arch in enumerate(archs):
+    sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
+
+    for i, arch in enumerate(sorted(archs, key=sort_fn)):
         with open(save_loc + f"{arch=}.pkl", "rb") as f:
             ccms = pickle.load(f)
 
@@ -341,17 +413,17 @@ def plot_ccm_parameters(save_loc, archs, seeds):
     ax.set_xscale("log")
     ax.set_xlabel("Number of parameters")
     ax.set_ylabel("Convergent X-mapping")
-    ax.tick_params(axis="x", labelrotation=45)
+    # ax.tick_params(axis="x", labelrotation=45)
 
     handles, labels = fig.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
 
     fig.tight_layout()
-    fig.savefig(f"{save_loc}_ccms_parameters.png")
+    fig.savefig(f"{save_loc}_ccms_regr_parameters.png")
 
 
-def plot_ccm_flops(save_loc, archs, seeds):
+def plot_regr_ccm_flops(save_loc, archs, seeds):
     """Plot best ccm (so, 1 checkpoint only) across all seeds for all archs
 
     Args:
@@ -363,7 +435,9 @@ def plot_ccm_flops(save_loc, archs, seeds):
     # x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
     regression_params = []
     regression_correls = []
-    for i, arch in enumerate(archs):
+    sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
+
+    for i, arch in enumerate(sorted(archs, key=sort_fn)):
         with open(save_loc + f"{arch=}.pkl", "rb") as f:
             ccms = pickle.load(f)
 
@@ -399,23 +473,23 @@ def plot_ccm_flops(save_loc, archs, seeds):
             zorder=1,
         )
 
-    # z = np.polyfit(np.log(regression_params), regression_correls, 1)
-    # a, b = np.poly1d(z)
-    # xseq = np.linspace(min(regression_params), max(regression_params), num=100)
-    # f = lambda x: a * np.log(x) + b
-    # ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} x log(x) + {b:.2}")
+    z = np.polyfit(np.log(regression_params), regression_correls, 1)
+    a, b = np.poly1d(z)
+    xseq = np.linspace(min(regression_params), max(regression_params), num=100)
+    f = lambda x: a * np.log(x) + b
+    ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} x log(x) + {b:.2}")
 
-    # ax.set_xscale("log")
+    ax.set_xscale("log")
     ax.set_xlabel("Number of FLOPs per RL loop")
     ax.set_ylabel("Convergent X-mapping")
-    ax.tick_params(axis="x", labelrotation=45)
+    # ax.tick_params(axis="x", labelrotation=45)
 
     handles, labels = fig.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
 
     fig.tight_layout()
-    fig.savefig(f"{save_loc}_ccms_flops.png")
+    fig.savefig(f"{save_loc}_ccms_regr_flops.png")
 
 
 def get_dir_size(path):
@@ -514,15 +588,15 @@ if __name__ == "__main__":
     archs, seeds = get_archs_seeds("log/tag/ppo", seeds=seeds)
     save_loc = f"ccms_{E=}"
     save_ccms(archs, seeds, save_loc=save_loc)
-    # get_n_flops(archs, seeds, save_loc)
+    get_n_flops(archs, seeds, save_loc)
     # decide whether to do depth-wise of width-wise analysis
     # Counter-intuitive:
     # If depth is selected, we decide a fixed depth and vary the width
     # If width is selected, we decided a fixed with and vary the depth
-    # depth = 3
-    depth = False
-    # width = False
-    width = 64
+    depth = 3
+    # depth = False
+    width = False
+    # width = 64
     assert width != depth
     if depth != False:
         archs = [arch for arch in archs if len(arch.split("_")) == depth]
@@ -532,9 +606,10 @@ if __name__ == "__main__":
     print(archs)
     # with open("test_ccms.pkl", "rb") as f:
     #     ccms = pickle.load(f)
-    # plot_ccms(save_loc, archs, seeds)
-    # plot_ccm_parameters(save_loc, archs, seeds)
+    plot_ccms(save_loc, archs, seeds)
     plot_ccm_flops(save_loc, archs, seeds)
+    plot_regr_ccm_parameters(save_loc, archs, seeds)
+    plot_regr_ccm_flops(save_loc, archs, seeds)
 
     # rewards = get_rewards(archs, seeds)
     # plot_rewards(rewards, save_loc, seeds)
