@@ -34,7 +34,6 @@ from viz_config import *
 plt.hsv()
 
 TAU = 1  # Sensible default
-E = 4  # To vary
 ENV = simple_tag_v2
 ENV_INSTANCE = get_env(simple_tag_v2)
 NAMES = ENV_INSTANCE.agents
@@ -521,13 +520,18 @@ def get_archs_seeds(_dir, seeds=None):
         dir_sizes = []
         for seed in seeds:
             path_seed = path + str(seed)
-            dir_sizes.append(int(get_dir_size(path_seed)))
+            dir_sizes.append(int(get_dir_size(path_seed)) // 1024)
 
         dir_sizes = np.array(dir_sizes)
         max_size = max(dir_sizes)
+        # print(arch, dir_sizes)
+        # input()
         valid_seeds = set(np.where(dir_sizes == max_size)[0])
         valid.append(valid_seeds)
 
+    # for i, v in enumerate(valid):
+    #     print(archs[i], v)
+    # print(valid)
     final_set = valid[0]
     for seed_set in valid[1:]:
         final_set = seed_set & final_set
@@ -583,12 +587,17 @@ def get_n_flops(archs, seeds, save_loc):
             pickle.dump(ccms, f)
 
 
+E = 5  # To vary
+
+
 if __name__ == "__main__":
-    seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    seeds = list(range(0, 15))
     archs, seeds = get_archs_seeds("log/tag/ppo", seeds=seeds)
     save_loc = f"ccms_{E=}"
+    # print(seeds, archs)
+    # exit()
     save_ccms(archs, seeds, save_loc=save_loc)
-    get_n_flops(archs, seeds, save_loc)
+    # get_n_flops(archs, seeds, save_loc)
     # decide whether to do depth-wise of width-wise analysis
     # Counter-intuitive:
     # If depth is selected, we decide a fixed depth and vary the width
@@ -600,17 +609,16 @@ if __name__ == "__main__":
     assert width != depth
     if depth != False:
         archs = [arch for arch in archs if len(arch.split("_")) == depth]
+        save_loc = "fixed_depth_var_width_" + save_loc
     elif width != False:
         archs = [arch for arch in archs if list(set(arch.split("_")))[0] == str(width)]
+        save_loc = "fixed_width_var_depth_" + save_loc
 
-    print(archs)
-    # with open("test_ccms.pkl", "rb") as f:
-    #     ccms = pickle.load(f)
     plot_ccms(save_loc, archs, seeds)
     plot_ccm_flops(save_loc, archs, seeds)
     plot_regr_ccm_parameters(save_loc, archs, seeds)
     plot_regr_ccm_flops(save_loc, archs, seeds)
 
-    # rewards = get_rewards(archs, seeds)
-    # plot_rewards(rewards, save_loc, seeds)
+    rewards = get_rewards(archs, seeds)
+    plot_rewards(rewards, "reward", seeds)
     # retrieve_key_data_from_dict(ccms, "correl")
