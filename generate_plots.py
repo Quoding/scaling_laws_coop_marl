@@ -217,7 +217,7 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
     return
 
 
-def plot_ccms(save_loc, archs, seeds):
+def plot_ccms(save_loc, archs, seeds, fig_save_loc_tweak=""):
     fig, ax = plt.subplots(1, 1)
     x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
     sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
@@ -256,10 +256,10 @@ def plot_ccms(save_loc, archs, seeds):
 
     fig.tight_layout()
     fig.legend()
-    fig.savefig(f"{save_loc}_ccms.png")
+    fig.savefig(f"{fig_save_loc_tweak}_{save_loc}_ccms.png")
 
 
-def plot_rewards(rewards_dict, save_loc, seeds):
+def plot_rewards(save_loc, rewards_dict, seeds, fig_save_loc_tweak=""):
     fig, ax = plt.subplots(1, 1)
     x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES + 1)]
 
@@ -295,10 +295,10 @@ def plot_rewards(rewards_dict, save_loc, seeds):
 
     fig.tight_layout()
     fig.legend()
-    fig.savefig(f"{save_loc}_rewards.png")
+    fig.savefig(f"{fig_save_loc_tweak}_{save_loc}.png")
 
 
-def plot_ccm_flops(save_loc, archs, seeds):
+def plot_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak=""):
     """Plot ccms w.r.t. flops
 
     Args:
@@ -350,10 +350,10 @@ def plot_ccm_flops(save_loc, archs, seeds):
     ax.set_xscale("log")
     fig.tight_layout()
     fig.legend()
-    fig.savefig(f"{save_loc}_ccms_flops.png")
+    fig.savefig(f"{fig_save_loc_tweak}_{save_loc}_ccms_flops.png")
 
 
-def plot_regr_ccm_parameters(save_loc, archs, seeds):
+def plot_regr_ccm_parameters(save_loc, archs, seeds, fig_save_loc_tweak=""):
     """Plot best ccm (so, 1 checkpoint only) across all seeds for all archs
 
     Args:
@@ -407,7 +407,7 @@ def plot_regr_ccm_parameters(save_loc, archs, seeds):
     a, b = np.poly1d(z)
     xseq = np.linspace(min(regression_params), max(regression_params), num=100)
     f = lambda x: a * np.log(x) + b
-    ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} x log(x) + {b:.2}")
+    ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} * log(x) + {b:.2}")
 
     ax.set_xscale("log")
     ax.set_xlabel("Number of parameters")
@@ -419,10 +419,10 @@ def plot_regr_ccm_parameters(save_loc, archs, seeds):
     plt.legend(by_label.values(), by_label.keys())
 
     fig.tight_layout()
-    fig.savefig(f"{save_loc}_ccms_regr_parameters.png")
+    fig.savefig(f"{fig_save_loc_tweak}_{save_loc}_ccms_regr_parameters.png")
 
 
-def plot_regr_ccm_flops(save_loc, archs, seeds):
+def plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak=""):
     """Plot best ccm (so, 1 checkpoint only) across all seeds for all archs
 
     Args:
@@ -476,7 +476,7 @@ def plot_regr_ccm_flops(save_loc, archs, seeds):
     a, b = np.poly1d(z)
     xseq = np.linspace(min(regression_params), max(regression_params), num=100)
     f = lambda x: a * np.log(x) + b
-    ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} x log(x) + {b:.2}")
+    ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} * log(x) + {b:.2}")
 
     ax.set_xscale("log")
     ax.set_xlabel("Number of FLOPs per RL loop")
@@ -488,7 +488,7 @@ def plot_regr_ccm_flops(save_loc, archs, seeds):
     plt.legend(by_label.values(), by_label.keys())
 
     fig.tight_layout()
-    fig.savefig(f"{save_loc}_ccms_regr_flops.png")
+    fig.savefig(f"{fig_save_loc_tweak}_{save_loc}_ccms_regr_flops.png")
 
 
 def get_dir_size(path):
@@ -642,7 +642,7 @@ if __name__ == "__main__":
     save_loc = f"ccms_{E=}"
     # print(seeds, archs)
     # exit()
-    # save_ccms(archs, seeds, save_loc=save_loc)
+    save_ccms(archs, seeds, save_loc=save_loc)
     # get_n_flops(archs, seeds, save_loc)
     # get_n_params(archs, seeds, save_loc)
     # decide whether to do depth-wise of width-wise analysis
@@ -656,16 +656,16 @@ if __name__ == "__main__":
     assert width != depth
     if depth != False:
         archs = [arch for arch in archs if len(arch.split("_")) == depth]
-        save_loc = "fixed_depth_var_width_" + save_loc
+        fig_save_loc_tweak = "fixed_depth_var_width"
     elif width != False:
         archs = [arch for arch in archs if list(set(arch.split("_")))[0] == str(width)]
-        save_loc = "fixed_width_var_depth_" + save_loc
+        fig_save_loc_tweak = "fixed_width_var_depth"
 
-    plot_ccms(save_loc, archs, seeds)
-    plot_ccm_flops(save_loc, archs, seeds)
-    plot_regr_ccm_parameters(save_loc, archs, seeds)
-    plot_regr_ccm_flops(save_loc, archs, seeds)
+    plot_ccms(save_loc, archs, seeds, fig_save_loc_tweak)
+    plot_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak)
+    plot_regr_ccm_parameters(save_loc, archs, seeds, fig_save_loc_tweak)
+    plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak)
 
     rewards = get_rewards(archs, seeds)
-    plot_rewards(rewards, "reward", seeds)
+    plot_rewards("reward", rewards, seeds, fig_save_loc_tweak)
     # retrieve_key_data_from_dict(ccms, "correl")
