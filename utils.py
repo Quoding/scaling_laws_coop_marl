@@ -211,7 +211,8 @@ def get_agents(
         FlopCountAnalysis(actor, dummy_input).total()
         + FlopCountAnalysis(critic, dummy_input).total()
     )
-    n_params_net = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    n_params_net = sum(p.numel() for p in critic.parameters() if p.requires_grad)
+    n_params_net += sum(p.numel() for p in actor.parameters() if p.requires_grad)
     return policy, optims, env.agents, n_params_net, flops_per_loop
 
 

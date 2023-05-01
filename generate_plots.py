@@ -587,6 +587,52 @@ def get_n_flops(archs, seeds, save_loc):
             pickle.dump(ccms, f)
 
 
+def get_n_params(archs, seeds, save_loc):
+    """Post hoc gathering of number of params for a given arch
+
+    Args:
+        archs (list): architectures for which to retrieve number of flops
+        seeds (list): list of valid seeds, only first one will be taken anyway
+        save_loc (str): save/load location
+    """
+    for arch in tqdm(archs):
+        # if exists(save_loc + f"{arch=}.pkl"):
+        # print(f"Skipped {arch=}")
+        # continue
+        with open(save_loc + f"{arch=}.pkl", "rb") as f:
+            ccms = pickle.load(f)
+
+        seed = seeds[0]
+        # Retrieve arguments used for the targeted run
+        path = f"log/tag/ppo/{arch}/{seed}"
+        event_acc = EventAccumulator(path)
+        event_acc.Reload()
+        args = eval(
+            event_acc.Tensors("args/text_summary")[0].tensor_proto.string_val[0]
+        )
+        # To load on device without GPU
+        args.device = "cpu"
+
+        # Take first path since we need ANY model loaded, they're all the same in flops.
+        checkpoints_path = f"log/tag/ppo/cp/{arch}/{seed}/"
+        avail_checkpoint = sorted(
+            os.listdir(checkpoints_path), key=lambda x: int(x.split("=")[1])
+        )[0]
+        avail_checkpoints_path = checkpoints_path + avail_checkpoint
+
+        # Iterate through checkpoints, loading agents and setting one as random policy
+        # then, collect episodes to compute CCM
+        args.resume_path = avail_checkpoints_path
+
+        # Load agent, set one as random
+        policy, optim, agents, n_params, flops_per_loop = get_agents(ENV, args)
+
+        ccms[arch]["n_params"] = n_params
+
+        with open(save_loc + f"{arch=}.pkl", "wb") as f:
+            pickle.dump(ccms, f)
+
+
 E = 5  # To vary
 
 
@@ -596,8 +642,9 @@ if __name__ == "__main__":
     save_loc = f"ccms_{E=}"
     # print(seeds, archs)
     # exit()
-    save_ccms(archs, seeds, save_loc=save_loc)
+    # save_ccms(archs, seeds, save_loc=save_loc)
     # get_n_flops(archs, seeds, save_loc)
+    # get_n_params(archs, seeds, save_loc)
     # decide whether to do depth-wise of width-wise analysis
     # Counter-intuitive:
     # If depth is selected, we decide a fixed depth and vary the width
