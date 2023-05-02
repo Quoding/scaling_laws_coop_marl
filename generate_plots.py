@@ -30,6 +30,7 @@ from tqdm import tqdm
 from matplotlib.colors import hsv_to_rgb
 from utils import *
 from viz_config import *
+from sympy import S, symbols, printing
 
 plt.hsv()
 
@@ -219,7 +220,7 @@ def save_ccms(archs: list, seeds: list, save_loc=None):
 
 def plot_ccms(save_loc, archs, seeds, fig_save_loc_tweak=""):
     fig, ax = plt.subplots(1, 1)
-    x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES)]
+    x_axis = [SLICE_SIZE * i for i in range(1, NUM_SLICES)]
     sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
     for i, arch in enumerate(sorted(archs, key=sort_fn)):
         with open(save_loc + f"{arch=}.pkl", "rb") as f:
@@ -251,8 +252,8 @@ def plot_ccms(save_loc, archs, seeds, fig_save_loc_tweak=""):
         ax.plot(x_axis, correl_mean, label=arch_label, color=COLORS[i])
 
     ax.set_xlabel("Number of environment interactions")
-    ax.set_ylabel("Convergent X-mapping")
-    ax.tick_params(axis="x", labelrotation=45)
+    ax.set_ylabel("CCMs")
+    # ax.tick_params(axis="x", labelrotation=45)
 
     fig.tight_layout()
     fig.legend()
@@ -261,7 +262,7 @@ def plot_ccms(save_loc, archs, seeds, fig_save_loc_tweak=""):
 
 def plot_rewards(save_loc, rewards_dict, seeds, fig_save_loc_tweak=""):
     fig, ax = plt.subplots(1, 1)
-    x_axis = [f"{SLICE_SIZE * i:.2e}" for i in range(1, NUM_SLICES + 1)]
+    x_axis = [SLICE_SIZE * i for i in range(1, NUM_SLICES + 1)]
 
     sort_fn = key = lambda x: (int(x.split("_")[0]), len(x.split("_")))
 
@@ -291,7 +292,7 @@ def plot_rewards(save_loc, rewards_dict, seeds, fig_save_loc_tweak=""):
 
     ax.set_xlabel("Number of environment interactions")
     ax.set_ylabel("Obtained reward")
-    ax.tick_params(axis="x", labelrotation=45)
+    # ax.tick_params(axis="x", labelrotation=45)
 
     fig.tight_layout()
     fig.legend()
@@ -345,7 +346,7 @@ def plot_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak=""):
         ax.plot(x_axis, correl_mean, label=arch_label, color=COLORS[i])
 
     ax.set_xlabel("FLOPs")
-    ax.set_ylabel("Convergent X-mapping")
+    ax.set_ylabel("CCMs")
     # ax.tick_params(axis="x", labelrotation=90)
     ax.set_xscale("log")
     fig.tight_layout()
@@ -411,7 +412,7 @@ def plot_regr_ccm_parameters(save_loc, archs, seeds, fig_save_loc_tweak=""):
 
     ax.set_xscale("log")
     ax.set_xlabel("Number of parameters")
-    ax.set_ylabel("Convergent X-mapping")
+    ax.set_ylabel("CCMs")
     # ax.tick_params(axis="x", labelrotation=45)
 
     handles, labels = fig.gca().get_legend_handles_labels()
@@ -422,7 +423,7 @@ def plot_regr_ccm_parameters(save_loc, archs, seeds, fig_save_loc_tweak=""):
     fig.savefig(f"{fig_save_loc_tweak}_{save_loc}_ccms_regr_parameters.png")
 
 
-def plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak=""):
+def plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak="", fit="log"):
     """Plot best ccm (so, 1 checkpoint only) across all seeds for all archs
 
     Args:
@@ -472,15 +473,28 @@ def plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak=""):
             zorder=1,
         )
 
-    z = np.polyfit(np.log(regression_params), regression_correls, 1)
-    a, b = np.poly1d(z)
     xseq = np.linspace(min(regression_params), max(regression_params), num=100)
-    f = lambda x: a * np.log(x) + b
-    ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} * log(x) + {b:.2}")
+
+    if fit == "log":
+        identifier = ""
+        z = np.polyfit(np.log(regression_params), regression_correls, 1)
+        a, b = np.poly1d(z)
+        f = lambda x: a * np.log(x) + b
+
+        ax.plot(xseq, f(xseq), color="k", label=f"{a:.2} * log(x) + {b:.2}")
+
+    elif type(fit) == int:
+        poly_deg = fit
+        identifier = f"_poly_{fit}"
+        z = np.polyfit(regression_params, regression_correls, poly_deg)
+        f = np.poly1d(z)
+        label = [f"{c:.2} * x^{i}" for i, c in reversed(list(enumerate(z)))]
+        label = "+".join(label)
+        ax.plot(xseq, f(xseq), color="k", label=f"{label}")
 
     ax.set_xscale("log")
     ax.set_xlabel("Number of FLOPs per RL loop")
-    ax.set_ylabel("Convergent X-mapping")
+    ax.set_ylabel("CCMs")
     # ax.tick_params(axis="x", labelrotation=45)
 
     handles, labels = fig.gca().get_legend_handles_labels()
@@ -488,7 +502,7 @@ def plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak=""):
     plt.legend(by_label.values(), by_label.keys())
 
     fig.tight_layout()
-    fig.savefig(f"{fig_save_loc_tweak}_{save_loc}_ccms_regr_flops.png")
+    fig.savefig(f"{fig_save_loc_tweak}_{save_loc}_ccms_regr_flops{identifier}.png")
 
 
 def get_dir_size(path):
@@ -640,8 +654,6 @@ if __name__ == "__main__":
     seeds = list(range(0, 15))
     archs, seeds = get_archs_seeds("log/tag/ppo", seeds=seeds)
     save_loc = f"ccms_{E=}"
-    # print(seeds, archs)
-    # exit()
     save_ccms(archs, seeds, save_loc=save_loc)
     # get_n_flops(archs, seeds, save_loc)
     # get_n_params(archs, seeds, save_loc)
@@ -649,10 +661,10 @@ if __name__ == "__main__":
     # Counter-intuitive:
     # If depth is selected, we decide a fixed depth and vary the width
     # If width is selected, we decided a fixed with and vary the depth
-    depth = 3
-    # depth = False
-    width = False
-    # width = 64
+    # depth = 3
+    depth = False
+    # width = False
+    width = 64
     assert width != depth
     if depth != False:
         archs = [arch for arch in archs if len(arch.split("_")) == depth]
@@ -664,8 +676,7 @@ if __name__ == "__main__":
     plot_ccms(save_loc, archs, seeds, fig_save_loc_tweak)
     plot_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak)
     plot_regr_ccm_parameters(save_loc, archs, seeds, fig_save_loc_tweak)
-    plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak)
+    plot_regr_ccm_flops(save_loc, archs, seeds, fig_save_loc_tweak, fit="log")
 
-    rewards = get_rewards(archs, seeds)
-    plot_rewards("reward", rewards, seeds, fig_save_loc_tweak)
-    # retrieve_key_data_from_dict(ccms, "correl")
+    # rewards = get_rewards(archs, seeds)
+    # plot_rewards("reward", rewards, seeds, fig_save_loc_tweak)
